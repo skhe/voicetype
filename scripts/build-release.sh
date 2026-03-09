@@ -108,7 +108,9 @@ BUNDLE_DIR=$(find ~/Library/Developer/Xcode/DerivedData -maxdepth 8 \
     -type d 2>/dev/null | sort -r | head -1)
 if [[ -n "$BUNDLE_DIR" ]]; then
     for bundle in "$BUNDLE_DIR"/*.bundle; do
-        [[ -d "$bundle" ]] && cp -R "$bundle" "${APP_BUNDLE}/Contents/Resources/"
+        # Resolve symlinks before copying — DerivedData bundles are symlinks
+        # that point to paths outside the .app and are invalid on other machines.
+        [[ -d "$bundle" ]] && ditto "$(realpath "$bundle")" "${APP_BUNDLE}/Contents/Resources/$(basename "$bundle")"
     done
     echo "==> Copied SPM resource bundles from $BUNDLE_DIR"
 else
