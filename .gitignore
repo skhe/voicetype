@@ -1,0 +1,9 @@
+.build/
+*.o
+*.d
+*.dia
+DerivedData/
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
