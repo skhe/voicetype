@@ -2,6 +2,32 @@ import Foundation
 import SwiftUI
 import KeyboardShortcuts
 
+enum VoiceTypeError: LocalizedError {
+    case timeout(Double)
+    var errorDescription: String? {
+        switch self {
+        case .timeout(let s): return "操作超时（超过 \(Int(s)) 秒）"
+        }
+    }
+}
+
+// Actor that ensures a CheckedContinuation is resumed exactly once.
+// Used by withHardTimeout to guarantee hard-timeout semantics regardless
+// of whether the work task cooperates with Swift cooperative cancellation.
+private actor ContinuationResolver<T: Sendable> {
+    private var continuation: CheckedContinuation<T, Error>?
+
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(with result: Result<T, Error>) {
+        guard let c = continuation else { return }
+        continuation = nil
+        c.resume(with: result)
+    }
+}
+
 enum RecordingStatus {
     case idle
     case starting     // transient: audioRecorder.start() in flight
@@ -133,12 +159,22 @@ class AppState: ObservableObject {
             let audioURL = try await audioRecorder.stop()
             status = .transcribing
 
-            let rawText = try await transcriptionService.transcribe(audioURL: audioURL, model: whisperModel)
+            let t0 = Date()
+            print("[VoiceType] transcribing start")
+            let rawText = try await withTimeout(seconds: 120) {
+                try await self.transcriptionService.transcribe(audioURL: audioURL, model: self.whisperModel)
+            }
+            print("[VoiceType] transcribing done (\(String(format: "%.1f", Date().timeIntervalSince(t0)))s)")
 
             let finalText: String
             if enablePostProcessing && !openAIKey.isEmpty {
                 status = .postProcessing
-                finalText = try await postProcessor.process(rawText: rawText, apiKey: openAIKey)
+                let t1 = Date()
+                print("[VoiceType] postProcessing start")
+                finalText = try await withTimeout(seconds: 30) {
+                    try await self.postProcessor.process(rawText: rawText, apiKey: self.openAIKey)
+                }
+                print("[VoiceType] postProcessing done (\(String(format: "%.1f", Date().timeIntervalSince(t1)))s)")
             } else {
                 finalText = rawText
             }
@@ -156,8 +192,34 @@ class AppState: ObservableObject {
 
             try? FileManager.default.removeItem(at: audioURL)
         } catch {
+            print("[VoiceType] finishRecording error: \(error)")
             status = .error(error.localizedDescription)
             scheduleReset()
+        }
+    }
+
+    // Hard timeout: the caller returns after `seconds` regardless of whether
+    // `operation` has finished. The work runs in a detached task that may
+    // continue briefly in the background, but the UI state is unblocked immediately.
+    private func withTimeout<T: Sendable>(seconds: Double, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            let resolver = ContinuationResolver(continuation)
+
+            // Work task — detached so it is not bound to the parent task's lifetime.
+            Task.detached {
+                do {
+                    let result = try await operation()
+                    await resolver.resume(with: .success(result))
+                } catch {
+                    await resolver.resume(with: .failure(error))
+                }
+            }
+
+            // Timer task — fires unconditionally after `seconds`.
+            Task.detached {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                await resolver.resume(with: .failure(VoiceTypeError.timeout(seconds)))
+            }
         }
     }
 
