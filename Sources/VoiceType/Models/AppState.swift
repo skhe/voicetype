@@ -11,6 +11,23 @@ enum VoiceTypeError: LocalizedError {
     }
 }
 
+// Actor that ensures a CheckedContinuation is resumed exactly once.
+// Used by withHardTimeout to guarantee hard-timeout semantics regardless
+// of whether the work task cooperates with Swift cooperative cancellation.
+private actor ContinuationResolver<T: Sendable> {
+    private var continuation: CheckedContinuation<T, Error>?
+
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(with result: Result<T, Error>) {
+        guard let c = continuation else { return }
+        continuation = nil
+        c.resume(with: result)
+    }
+}
+
 enum RecordingStatus {
     case idle
     case starting     // transient: audioRecorder.start() in flight
@@ -181,17 +198,28 @@ class AppState: ObservableObject {
         }
     }
 
-    // Runs `operation` with a hard timeout; throws `TranscriptionError.timeout` if exceeded.
+    // Hard timeout: the caller returns after `seconds` regardless of whether
+    // `operation` has finished. The work runs in a detached task that may
+    // continue briefly in the background, but the UI state is unblocked immediately.
     private func withTimeout<T: Sendable>(seconds: Double, operation: @escaping @Sendable () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw VoiceTypeError.timeout(seconds)
+        try await withCheckedThrowingContinuation { continuation in
+            let resolver = ContinuationResolver(continuation)
+
+            // Work task — detached so it is not bound to the parent task's lifetime.
+            Task.detached {
+                do {
+                    let result = try await operation()
+                    await resolver.resume(with: .success(result))
+                } catch {
+                    await resolver.resume(with: .failure(error))
+                }
             }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+
+            // Timer task — fires unconditionally after `seconds`.
+            Task.detached {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                await resolver.resume(with: .failure(VoiceTypeError.timeout(seconds)))
+            }
         }
     }
 
