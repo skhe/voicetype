@@ -8,7 +8,18 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("快捷键") {
-                KeyboardShortcuts.Recorder("录音快捷键（按住录音，松开停止）", name: .toggleRecording)
+                KeyboardShortcuts.Recorder(for: .toggleRecording)
+            }
+
+            Section("语言") {
+                Picker("识别语言", selection: $appState.language) {
+                    Text("中文").tag("zh")
+                    Text("English").tag("en")
+                }
+                .pickerStyle(.radioGroup)
+                Text("语言影响语音识别准确率和后处理输出")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("OpenAI 后处理") {

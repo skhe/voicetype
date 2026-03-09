@@ -89,6 +89,11 @@ class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(whisperModel, forKey: "whisperModel") }
     }
 
+    // ISO 639-1 language code; default Chinese
+    @Published var language: String = UserDefaults.standard.string(forKey: "language") ?? "zh" {
+        didSet { UserDefaults.standard.set(language, forKey: "language") }
+    }
+
     private let audioRecorder = AudioRecorder()
     private let transcriptionService = TranscriptionService()
     private let postProcessor = PostProcessor()
@@ -162,7 +167,7 @@ class AppState: ObservableObject {
             let t0 = Date()
             print("[VoiceType] transcribing start")
             let rawText = try await withTimeout(seconds: 120) {
-                try await self.transcriptionService.transcribe(audioURL: audioURL, model: self.whisperModel)
+                try await self.transcriptionService.transcribe(audioURL: audioURL, model: self.whisperModel, language: self.language)
             }
             print("[VoiceType] transcribing done (\(String(format: "%.1f", Date().timeIntervalSince(t0)))s)")
 
@@ -172,7 +177,7 @@ class AppState: ObservableObject {
                 let t1 = Date()
                 print("[VoiceType] postProcessing start")
                 finalText = try await withTimeout(seconds: 30) {
-                    try await self.postProcessor.process(rawText: rawText, apiKey: self.openAIKey)
+                    try await self.postProcessor.process(rawText: rawText, apiKey: self.openAIKey, language: self.language)
                 }
                 print("[VoiceType] postProcessing done (\(String(format: "%.1f", Date().timeIntervalSince(t1)))s)")
             } else {
