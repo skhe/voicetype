@@ -185,11 +185,12 @@ class AppState: ObservableObject {
             }
 
             lastTranscription = finalText
-            clipboardManager.copy(finalText)
 
             if autoPaste {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                clipboardManager.paste()
+                // pasteAndRestore: saves clipboard → writes text → ⌘V → restores clipboard
+                await clipboardManager.pasteAndRestore(finalText)
+            } else {
+                clipboardManager.copy(finalText)
             }
 
             NotificationManager.show(text: finalText)
