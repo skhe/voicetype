@@ -101,6 +101,22 @@ if [[ -d "Assets.xcassets/AppIcon.appiconset" ]]; then
     cp -R "Assets.xcassets" "${APP_BUNDLE}/Contents/Resources/"
 fi
 
+# Copy SPM resource bundles (e.g. KeyboardShortcuts_KeyboardShortcuts.bundle)
+# They live in DerivedData's ArchiveIntermediates BuildProductsPath, not in the xcarchive.
+BUNDLE_DIR=$(find ~/Library/Developer/Xcode/DerivedData -maxdepth 8 \
+    -path "*/ArchiveIntermediates/${APP_NAME}/BuildProductsPath/Release" \
+    -type d 2>/dev/null | sort -r | head -1)
+if [[ -n "$BUNDLE_DIR" ]]; then
+    for bundle in "$BUNDLE_DIR"/*.bundle; do
+        # Resolve symlinks before copying — DerivedData bundles are symlinks
+        # that point to paths outside the .app and are invalid on other machines.
+        [[ -d "$bundle" ]] && ditto "$(realpath "$bundle")" "${APP_BUNDLE}/Contents/Resources/$(basename "$bundle")"
+    done
+    echo "==> Copied SPM resource bundles from $BUNDLE_DIR"
+else
+    echo "WARNING: Could not locate SPM resource bundles in DerivedData"
+fi
+
 # ── 4. Sign ───────────────────────────────────────────────────────────────
 if $NO_SIGN; then
     # Use minimal entitlements for ad-hoc: Hardened Runtime + restricted entitlements
