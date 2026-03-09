@@ -11,7 +11,11 @@ struct ClipboardManager {
     /// Writes `text` to clipboard, sends ⌘V, then restores the previous clipboard
     /// contents after a short delay so the user's existing clipboard is preserved.
     func pasteAndRestore(_ text: String) async {
-        guard AXIsProcessTrusted() else { return }
+        guard AXIsProcessTrusted() else {
+            // No accessibility permission — fall back to plain copy so result isn't lost
+            copy(text)
+            return
+        }
 
         let pasteboard = NSPasteboard.general
 
