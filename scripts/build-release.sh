@@ -22,12 +22,21 @@ ENTITLEMENTS="VoiceType.entitlements"
 
 echo "==> Building VoiceType v${VERSION}"
 
+# Use xcpretty for nicer output if available, but never swallow xcodebuild's exit code
+if command -v xcpretty &>/dev/null; then
+    PRETTY="xcpretty"
+else
+    PRETTY="cat"
+fi
+
 # ── 1. Clean ──────────────────────────────────────────────────────────────
 rm -rf build
 mkdir -p build
 
 # ── 2. Archive ────────────────────────────────────────────────────────────
 echo "==> Archiving…"
+# Use pipefail-safe pattern: run xcodebuild in a subshell, capture its exit
+set -o pipefail
 xcodebuild archive \
     -scheme "$SCHEME" \
     -configuration Release \
@@ -37,7 +46,7 @@ xcodebuild archive \
     DEVELOPMENT_TEAM="${APPLE_TEAM_ID:-}" \
     OTHER_CODE_SIGN_FLAGS="--entitlements ${ENTITLEMENTS} --options runtime" \
     SKIP_INSTALL=NO \
-    | xcpretty || true
+    | $PRETTY
 
 # ── 3. Export ─────────────────────────────────────────────────────────────
 echo "==> Exporting…"
@@ -62,7 +71,7 @@ xcodebuild -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_PATH" \
     -exportOptionsPlist build/ExportOptions.plist \
-    | xcpretty || true
+    | $PRETTY
 
 APP_PATH="${EXPORT_PATH}/${APP_NAME}.app"
 

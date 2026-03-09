@@ -15,6 +15,11 @@ class OnboardingManager: ObservableObject {
 
     static let completedKey = "onboardingComplete"
 
+    /// Synchronous check usable before @MainActor context (e.g. in App.init)
+    static var isCompleted: Bool {
+        UserDefaults.standard.bool(forKey: completedKey)
+    }
+
     init() {
         self.isComplete = UserDefaults.standard.bool(forKey: Self.completedKey)
     }

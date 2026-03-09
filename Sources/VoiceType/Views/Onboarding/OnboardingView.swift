@@ -1,57 +1,53 @@
 import SwiftUI
 import AVFoundation
 
+// OnboardingView is presented as a standalone window scene.
+// It receives AppState via environment and OnboardingManager via init.
 struct OnboardingView: View {
-    @StateObject private var manager = OnboardingManager()
     @EnvironmentObject var appState: AppState
+    // Use the shared manager from AppState so VoiceTypeApp can observe completion.
+    @EnvironmentObject var onboardingManager: OnboardingManager
 
     var body: some View {
-        if manager.isComplete {
-            EmptyView()
-        } else {
-            onboardingContent
-                .frame(width: 560, height: 420)
-        }
-    }
-
-    @ViewBuilder
-    private var onboardingContent: some View {
         VStack(spacing: 0) {
-            // Progress bar
+            // Progress bar (steps 0-3, "done" not shown)
             HStack(spacing: 4) {
                 ForEach(0..<4) { i in
                     Capsule()
-                        .fill(i <= manager.currentStep.rawValue ? Color.accentColor : Color.secondary.opacity(0.3))
+                        .fill(i <= min(onboardingManager.currentStep.rawValue, 3)
+                              ? Color.accentColor
+                              : Color.secondary.opacity(0.3))
                         .frame(height: 4)
                 }
             }
             .padding(.horizontal, 32)
             .padding(.top, 24)
 
-            // Step content
             Group {
-                switch manager.currentStep {
+                switch onboardingManager.currentStep {
                 case .modelSetup:
-                    ModelSetupStep(manager: manager)
+                    ModelSetupStep(appState: appState, manager: onboardingManager)
                 case .apiKey:
-                    APIKeyStep(appState: appState, manager: manager)
+                    APIKeyStep(appState: appState, manager: onboardingManager)
                 case .shortcut:
-                    ShortcutStep(manager: manager)
+                    ShortcutStep(manager: onboardingManager)
                 case .permissions:
-                    PermissionsStep(appState: appState, manager: manager)
+                    PermissionsStep(appState: appState, manager: onboardingManager)
                 case .done:
-                    DoneStep(manager: manager)
+                    DoneStep(manager: onboardingManager)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(.regularMaterial)
+        .frame(width: 560, height: 420)
     }
 }
 
 // MARK: - Step 1: Model Setup
 
 struct ModelSetupStep: View {
+    @ObservedObject var appState: AppState
     @ObservedObject var manager: OnboardingManager
     @StateObject private var downloader = ModelDownloader()
 
@@ -107,8 +103,12 @@ struct ModelSetupStep: View {
             }
 
             if downloader.isComplete {
-                Button("继续") { manager.advance() }
-                    .buttonStyle(.borderedProminent)
+                Button("继续") {
+                    // Sync the chosen model to AppState so transcription uses it
+                    appState.whisperModel = downloader.selectedModel
+                    manager.advance()
+                }
+                .buttonStyle(.borderedProminent)
             }
         }
         .padding(32)
@@ -253,9 +253,7 @@ struct PermissionsStep: View {
                     title: "麦克风权限",
                     subtitle: "录音必需",
                     isGranted: micGranted,
-                    action: {
-                        Task { await requestMic() }
-                    }
+                    action: { Task { await requestMic() } }
                 )
 
                 PermissionRow(
