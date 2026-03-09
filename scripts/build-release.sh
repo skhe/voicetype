@@ -38,7 +38,10 @@ EXPORT_PATH="build/export"
 APP_BUNDLE="build/${APP_NAME}.app"
 DMG_STAGING="build/dmg-staging"
 DMG_PATH="build/${APP_NAME}-${VERSION}.dmg"
+# Full entitlements (Developer ID + Hardened Runtime)
 ENTITLEMENTS="VoiceType.entitlements"
+# Minimal entitlements for ad-hoc signing (no Hardened Runtime — causes launchd error 163)
+ADHOC_ENTITLEMENTS="VoiceType-adhoc.entitlements"
 
 echo "==> Building VoiceType v${VERSION} (no-sign=$NO_SIGN)"
 
@@ -100,9 +103,11 @@ fi
 
 # ── 4. Sign ───────────────────────────────────────────────────────────────
 if $NO_SIGN; then
-    echo "==> Ad-hoc signing with entitlements…"
+    # Use minimal entitlements for ad-hoc: Hardened Runtime + restricted entitlements
+    # (audio-input, network) via ad-hoc cause launchd spawn failure (error 163).
+    echo "==> Ad-hoc signing with minimal entitlements…"
     codesign --force --deep --sign - \
-        --entitlements "$ENTITLEMENTS" \
+        --entitlements "$ADHOC_ENTITLEMENTS" \
         "$APP_BUNDLE"
 else
     # ── 4a. Developer ID export ──────────────────────────────────────────

@@ -2,12 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>VoiceType 需要麦克风权限来录制语音并进行本地转录。录音数据仅在设备上处理，不会上传。</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>VoiceType 需要此权限来模拟粘贴操作（自动粘贴到当前光标位置）。</string>
-    <key>LSUIElement</key>
-    <true/>
+    <key>CFBundleExecutable</key>
+    <string>VoiceType</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
     <key>CFBundleName</key>
     <string>VoiceType</string>
     <key>CFBundleIdentifier</key>
@@ -22,7 +20,13 @@
     <string>AppIcon</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
+    <key>LSUIElement</key>
+    <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>VoiceType 需要麦克风权限来录制语音并进行本地转录。录音数据仅在设备上处理，不会上传。</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>VoiceType 需要此权限来模拟粘贴操作（自动粘贴到当前光标位置）。</string>
 </dict>
 </plist>
