@@ -8,6 +8,9 @@ struct VoiceTypeApp: App {
 
     var body: some Scene {
         MenuBarExtra {
+            // AppLauncher is embedded here so it's always rendered at startup
+            // and can call openWindow(id: "onboarding") via @Environment.
+            AppLauncher(onboardingManager: onboardingManager)
             MenuBarView()
                 .environmentObject(appState)
         } label: {
@@ -15,8 +18,8 @@ struct VoiceTypeApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        // Onboarding window — opens automatically on first launch via onChange below.
-        // Closed when OnboardingManager.isComplete becomes true.
+        // Onboarding window.
+        // Content is guarded by isComplete so it collapses after the user finishes.
         Window("VoiceType 设置向导", id: "onboarding") {
             if !onboardingManager.isComplete {
                 OnboardingView()
@@ -26,7 +29,6 @@ struct VoiceTypeApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
-        .handlesExternalEvents(matching: [])
 
         Settings {
             SettingsView()
@@ -37,7 +39,8 @@ struct VoiceTypeApp: App {
 
 // MARK: - First-launch window opener
 
-/// Wraps the app entry point so we can use @Environment(\.openWindow) after the scene graph is set up.
+/// Zero-size view rendered inside MenuBarExtra content so @Environment(\.openWindow) is available.
+/// On first launch it calls openWindow(id: "onboarding") exactly once via onAppear.
 struct AppLauncher: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var onboardingManager: OnboardingManager
@@ -47,12 +50,6 @@ struct AppLauncher: View {
             .onAppear {
                 if !onboardingManager.isComplete {
                     openWindow(id: "onboarding")
-                }
-            }
-            .onChange(of: onboardingManager.isComplete) { _, complete in
-                if complete {
-                    // Close the window by removing the scene's content (handled by
-                    // the conditional `if !isComplete` inside the Window scene).
                 }
             }
     }
