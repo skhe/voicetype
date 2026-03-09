@@ -3,54 +3,61 @@ import KeyboardShortcuts
 
 @main
 struct VoiceTypeApp: App {
-    @StateObject private var appState = AppState()
-    @StateObject private var onboardingManager = OnboardingManager()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
-            // AppLauncher is embedded here so it's always rendered at startup
-            // and can call openWindow(id: "onboarding") via @Environment.
-            AppLauncher(onboardingManager: onboardingManager)
             MenuBarView()
-                .environmentObject(appState)
+                .environmentObject(appDelegate.appState)
         } label: {
-            MenuBarIcon(state: appState.status)
+            MenuBarIcon(state: appDelegate.appState.status)
         }
         .menuBarExtraStyle(.window)
 
-        // Onboarding window.
-        // Content is guarded by isComplete so it collapses after the user finishes.
-        Window("VoiceType 设置向导", id: "onboarding") {
-            if !onboardingManager.isComplete {
-                OnboardingView()
-                    .environmentObject(appState)
-                    .environmentObject(onboardingManager)
-            }
-        }
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
-
         Settings {
             SettingsView()
-                .environmentObject(appState)
+                .environmentObject(appDelegate.appState)
         }
     }
 }
 
-// MARK: - First-launch window opener
+// MARK: - App Delegate
 
-/// Zero-size view rendered inside MenuBarExtra content so @Environment(\.openWindow) is available.
-/// On first launch it calls openWindow(id: "onboarding") exactly once via onAppear.
-struct AppLauncher: View {
-    @Environment(\.openWindow) private var openWindow
-    @ObservedObject var onboardingManager: OnboardingManager
+/// Single source of truth for AppState and OnboardingManager.
+/// Opens the onboarding window directly via NSWindow+NSHostingController in
+/// applicationDidFinishLaunching so it appears before any user interaction
+/// — regardless of whether MenuBarExtra content has been rendered yet.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+    let appState = AppState()
+    let onboardingManager = OnboardingManager()
 
-    var body: some View {
-        EmptyView()
-            .onAppear {
-                if !onboardingManager.isComplete {
-                    openWindow(id: "onboarding")
+    private var onboardingWindow: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !OnboardingManager.isCompleted else { return }
+        openOnboardingWindow()
+    }
+
+    private func openOnboardingWindow() {
+        let content = OnboardingView()
+            .environmentObject(appState)
+            .environmentObject(onboardingManager)
+            .onReceive(onboardingManager.$isComplete) { [weak self] complete in
+                if complete {
+                    self?.onboardingWindow?.close()
+                    self?.onboardingWindow = nil
                 }
             }
+
+        let controller = NSHostingController(rootView: content)
+        let window = NSWindow(contentViewController: controller)
+        window.title = "VoiceType 设置向导"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        onboardingWindow = window
     }
 }
