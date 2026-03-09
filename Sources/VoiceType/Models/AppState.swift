@@ -2,6 +2,15 @@ import Foundation
 import SwiftUI
 import KeyboardShortcuts
 
+enum VoiceTypeError: LocalizedError {
+    case timeout(Double)
+    var errorDescription: String? {
+        switch self {
+        case .timeout(let s): return "操作超时（超过 \(Int(s)) 秒）"
+        }
+    }
+}
+
 enum RecordingStatus {
     case idle
     case starting     // transient: audioRecorder.start() in flight
@@ -133,12 +142,22 @@ class AppState: ObservableObject {
             let audioURL = try await audioRecorder.stop()
             status = .transcribing
 
-            let rawText = try await transcriptionService.transcribe(audioURL: audioURL, model: whisperModel)
+            let t0 = Date()
+            print("[VoiceType] transcribing start")
+            let rawText = try await withTimeout(seconds: 120) {
+                try await self.transcriptionService.transcribe(audioURL: audioURL, model: self.whisperModel)
+            }
+            print("[VoiceType] transcribing done (\(String(format: "%.1f", Date().timeIntervalSince(t0)))s)")
 
             let finalText: String
             if enablePostProcessing && !openAIKey.isEmpty {
                 status = .postProcessing
-                finalText = try await postProcessor.process(rawText: rawText, apiKey: openAIKey)
+                let t1 = Date()
+                print("[VoiceType] postProcessing start")
+                finalText = try await withTimeout(seconds: 30) {
+                    try await self.postProcessor.process(rawText: rawText, apiKey: self.openAIKey)
+                }
+                print("[VoiceType] postProcessing done (\(String(format: "%.1f", Date().timeIntervalSince(t1)))s)")
             } else {
                 finalText = rawText
             }
@@ -156,8 +175,23 @@ class AppState: ObservableObject {
 
             try? FileManager.default.removeItem(at: audioURL)
         } catch {
+            print("[VoiceType] finishRecording error: \(error)")
             status = .error(error.localizedDescription)
             scheduleReset()
+        }
+    }
+
+    // Runs `operation` with a hard timeout; throws `TranscriptionError.timeout` if exceeded.
+    private func withTimeout<T: Sendable>(seconds: Double, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw VoiceTypeError.timeout(seconds)
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
