@@ -68,8 +68,8 @@ class AppState: ObservableObject {
     private let postProcessor = PostProcessor()
     private let clipboardManager = ClipboardManager()
 
-    // Tracks whether the hotkey was released while recording was still starting.
-    // If true, stopRecording() will be called as soon as startRecording() finishes.
+    // Toggle mode: press once to start, press again to stop.
+    // Tracks the edge case where the second press arrives while .start() is still in flight.
     private var stopRequestedDuringStart = false
 
     init() {
@@ -80,12 +80,15 @@ class AppState: ObservableObject {
     private func setupHotkey() {
         KeyboardShortcuts.onKeyDown(for: .toggleRecording) { [weak self] in
             Task { @MainActor [weak self] in
-                await self?.startRecording()
-            }
-        }
-        KeyboardShortcuts.onKeyUp(for: .toggleRecording) { [weak self] in
-            Task { @MainActor [weak self] in
-                await self?.stopRecording()
+                guard let self else { return }
+                switch self.status {
+                case .idle:
+                    await self.startRecording()
+                case .starting, .recording:
+                    await self.stopRecording()
+                default:
+                    break
+                }
             }
         }
     }
