@@ -46,9 +46,19 @@ struct OpenAIResponse: Codable {
 actor PostProcessor {
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
 
-    private let systemPrompt = """
+    private let chineseSystemPrompt = """
+    你是一个语音转文字后处理器。请对原始转录文本进行清理：
+    1. 去除填充词（嗯、那个、就是、对对对、然后然后等）
+    2. 如果说话者在句子中途进行了更正，只保留最终版本
+    3. 去除不必要的重复
+    4. 添加适当的标点符号和段落分隔
+    5. 完全保留说话者的原意和语气
+    6. 只输出清理后的文本，不要任何解释
+    """
+
+    private let englishSystemPrompt = """
     You are a speech-to-text post-processor. Clean up the raw transcription by:
-    1. Remove filler words (um, uh, like, you know, 那个, 嗯, 就是说)
+    1. Remove filler words (um, uh, like, you know)
     2. When the speaker corrects themselves mid-sentence, keep ONLY the final intended version
     3. Remove unnecessary repetitions
     4. Add proper punctuation and paragraph breaks
@@ -56,12 +66,13 @@ actor PostProcessor {
     6. Output ONLY the cleaned text, no explanations
     """
 
-    func process(rawText: String, apiKey: String) async throws -> String {
+    func process(rawText: String, apiKey: String, language: String) async throws -> String {
+        let systemPrompt = language == "zh" ? chineseSystemPrompt : englishSystemPrompt
         let request = OpenAIRequest(
             model: "gpt-4o-mini",
             messages: [
                 OpenAIMessage(role: "system", content: systemPrompt),
-                OpenAIMessage(role: "user", content: "Raw transcription:\n\(rawText)")
+                OpenAIMessage(role: "user", content: "原始转录：\n\(rawText)")
             ],
             temperature: 0.2,
             maxTokens: 1024

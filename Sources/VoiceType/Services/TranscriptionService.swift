@@ -5,9 +5,10 @@ actor TranscriptionService {
     private var whisper: WhisperKit?
     private var loadedModel: String?
 
-    func transcribe(audioURL: URL, model: String) async throws -> String {
+    func transcribe(audioURL: URL, model: String, language: String) async throws -> String {
         let whisper = try await loadModel(model)
-        let results = try await whisper.transcribe(audioPath: audioURL.path)
+        let options = DecodingOptions(language: language)
+        let results = try await whisper.transcribe(audioPath: audioURL.path, decodeOptions: options)
         return results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
     }
 
