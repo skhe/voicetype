@@ -175,7 +175,8 @@ class AppState: ObservableObject {
             let rawText = try await withTimeout(seconds: 120) {
                 try await self.transcriptionService.transcribe(audioURL: audioURL, model: self.whisperModel, language: self.language)
             }
-            print("[VoiceType] transcribing done (\(String(format: "%.1f", Date().timeIntervalSince(t0)))s)")
+            let transcribeDuration = Date().timeIntervalSince(t0)
+            print("[VoiceType] transcribing done (\(String(format: "%.1f", transcribeDuration))s)")
 
             let finalText: String
             var postDetail: PostProcessorDetail?
@@ -218,7 +219,7 @@ class AppState: ObservableObject {
                     audioSizeBytes: audioSize,
                     preservedAudioPath: nil,
                     rawTranscription: rawText,
-                    transcribeDurationSeconds: Date().timeIntervalSince(t0),
+                    transcribeDurationSeconds: transcribeDuration,
                     postProcessingEnabled: enablePostProcessing && !openAIKey.isEmpty,
                     openAISystemPrompt: postDetail?.systemPrompt,
                     openAIUserPrompt: postDetail?.userPrompt,

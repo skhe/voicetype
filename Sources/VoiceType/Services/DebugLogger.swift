@@ -37,25 +37,44 @@ actor DebugLogger {
         guard let dir = try? logsDirectory else { return }
         Task.detached {
             do {
-                let dir = dir
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM-dd'T'HH-mm-ss"
-                let timestamp = formatter.string(from: entry.timestamp)
+                let datePrefix = formatter.string(from: entry.timestamp)
+                // UUID suffix ensures uniqueness even for same-second transcriptions
+                let id = "\(datePrefix)-\(UUID().uuidString.prefix(8))"
 
-                // Save JSON log
-                let logURL = dir.appendingPathComponent("transcription-\(timestamp).json")
+                // Copy audio first so we can back-fill the path in the JSON log
+                var savedAudioPath: String?
+                if let audioURL, FileManager.default.fileExists(atPath: audioURL.path) {
+                    let audioExt = audioURL.pathExtension
+                    let audioDestURL = dir.appendingPathComponent("audio-\(id).\(audioExt)")
+                    try FileManager.default.copyItem(at: audioURL, to: audioDestURL)
+                    savedAudioPath = audioDestURL.path
+                }
+
+                // Rebuild entry with preservedAudioPath filled in
+                let finalEntry = TranscriptionDebugEntry(
+                    timestamp: entry.timestamp,
+                    language: entry.language,
+                    model: entry.model,
+                    audioSizeBytes: entry.audioSizeBytes,
+                    preservedAudioPath: savedAudioPath,
+                    rawTranscription: entry.rawTranscription,
+                    transcribeDurationSeconds: entry.transcribeDurationSeconds,
+                    postProcessingEnabled: entry.postProcessingEnabled,
+                    openAISystemPrompt: entry.openAISystemPrompt,
+                    openAIUserPrompt: entry.openAIUserPrompt,
+                    openAIResponse: entry.openAIResponse,
+                    postProcessDurationSeconds: entry.postProcessDurationSeconds,
+                    finalOutput: entry.finalOutput
+                )
+
+                let logURL = dir.appendingPathComponent("transcription-\(id).json")
                 let encoder = JSONEncoder()
                 encoder.dateEncodingStrategy = .iso8601
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(entry)
+                let data = try encoder.encode(finalEntry)
                 try data.write(to: logURL)
-
-                // Preserve audio file alongside the log
-                if let audioURL, FileManager.default.fileExists(atPath: audioURL.path) {
-                    let audioExt = audioURL.pathExtension
-                    let audioDestURL = dir.appendingPathComponent("audio-\(timestamp).\(audioExt)")
-                    try FileManager.default.copyItem(at: audioURL, to: audioDestURL)
-                }
 
                 print("[VoiceType] Debug log saved: \(logURL.lastPathComponent)")
             } catch {
