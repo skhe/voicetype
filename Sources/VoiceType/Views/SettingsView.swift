@@ -65,6 +65,15 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("调试") {
+                Toggle("保存调试日志（音频 + 转录全流程数据）", isOn: $appState.debugLogging)
+                if appState.debugLogging {
+                    Text("日志保存到：~/Library/Application Support/VoiceType/DebugLogs/")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("输出") {
                 Toggle("转录完成后自动粘贴到当前位置（需要辅助功能权限）", isOn: $appState.autoPaste)
                     .onChange(of: appState.autoPaste) { _, newValue in
