@@ -94,6 +94,12 @@ class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(language, forKey: "language") }
     }
 
+    @Published var debugLogging: Bool = {
+        UserDefaults.standard.object(forKey: "debugLogging") as? Bool ?? true
+    }() {
+        didSet { UserDefaults.standard.set(debugLogging, forKey: "debugLogging") }
+    }
+
     private let audioRecorder = AudioRecorder()
     private let transcriptionService = TranscriptionService()
     private let postProcessor = PostProcessor()
@@ -169,17 +175,24 @@ class AppState: ObservableObject {
             let rawText = try await withTimeout(seconds: 120) {
                 try await self.transcriptionService.transcribe(audioURL: audioURL, model: self.whisperModel, language: self.language)
             }
-            print("[VoiceType] transcribing done (\(String(format: "%.1f", Date().timeIntervalSince(t0)))s)")
+            let transcribeDuration = Date().timeIntervalSince(t0)
+            print("[VoiceType] transcribing done (\(String(format: "%.1f", transcribeDuration))s)")
 
             let finalText: String
+            var postDetail: PostProcessorDetail?
+            var postDuration: Double?
+
             if enablePostProcessing && !openAIKey.isEmpty {
                 status = .postProcessing
                 let t1 = Date()
                 print("[VoiceType] postProcessing start")
-                finalText = try await withTimeout(seconds: 30) {
-                    try await self.postProcessor.process(rawText: rawText, apiKey: self.openAIKey, language: self.language)
+                let detail = try await withTimeout(seconds: 30) {
+                    try await self.postProcessor.processWithDetail(rawText: rawText, apiKey: self.openAIKey, language: self.language)
                 }
-                print("[VoiceType] postProcessing done (\(String(format: "%.1f", Date().timeIntervalSince(t1)))s)")
+                postDetail = detail
+                postDuration = Date().timeIntervalSince(t1)
+                finalText = detail.text
+                print("[VoiceType] postProcessing done (\(String(format: "%.1f", postDuration!))s)")
             } else {
                 finalText = rawText
             }
@@ -196,7 +209,31 @@ class AppState: ObservableObject {
             NotificationManager.show(text: finalText)
             status = .idle
 
-            try? FileManager.default.removeItem(at: audioURL)
+            // Save debug log (async, non-blocking) before potentially deleting audio
+            if debugLogging {
+                let audioSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
+                let debugEntry = TranscriptionDebugEntry(
+                    timestamp: t0,
+                    language: language,
+                    model: whisperModel,
+                    audioSizeBytes: audioSize,
+                    preservedAudioPath: nil,
+                    rawTranscription: rawText,
+                    transcribeDurationSeconds: transcribeDuration,
+                    postProcessingEnabled: enablePostProcessing && !openAIKey.isEmpty,
+                    openAISystemPrompt: postDetail?.systemPrompt,
+                    openAIUserPrompt: postDetail?.userPrompt,
+                    openAIResponse: postDetail?.rawResponse,
+                    postProcessDurationSeconds: postDuration,
+                    finalOutput: finalText
+                )
+                await DebugLogger.shared.save(entry: debugEntry, audioURL: audioURL)
+            }
+
+            // Keep audio file when debug logging is on; otherwise clean up
+            if !debugLogging {
+                try? FileManager.default.removeItem(at: audioURL)
+            }
         } catch {
             print("[VoiceType] finishRecording error: \(error)")
             status = .error(error.localizedDescription)

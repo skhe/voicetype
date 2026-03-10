@@ -43,6 +43,13 @@ struct OpenAIResponse: Codable {
     let error: APIError?
 }
 
+struct PostProcessorDetail {
+    let text: String
+    let systemPrompt: String
+    let userPrompt: String
+    let rawResponse: String
+}
+
 actor PostProcessor {
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
 
@@ -67,12 +74,17 @@ actor PostProcessor {
     """
 
     func process(rawText: String, apiKey: String, language: String) async throws -> String {
+        try await processWithDetail(rawText: rawText, apiKey: apiKey, language: language).text
+    }
+
+    func processWithDetail(rawText: String, apiKey: String, language: String) async throws -> PostProcessorDetail {
         let systemPrompt = language == "zh" ? chineseSystemPrompt : englishSystemPrompt
+        let userPrompt = "原始转录：\n\(rawText)"
         let request = OpenAIRequest(
             model: "gpt-4o-mini",
             messages: [
                 OpenAIMessage(role: "system", content: systemPrompt),
-                OpenAIMessage(role: "user", content: "原始转录：\n\(rawText)")
+                OpenAIMessage(role: "user", content: userPrompt)
             ],
             temperature: 0.2,
             maxTokens: 1024
@@ -97,6 +109,12 @@ actor PostProcessor {
         guard let content = apiResponse.choices?.first?.message.content else {
             throw PostProcessorError.invalidResponse
         }
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawResponse = String(data: data, encoding: .utf8) ?? ""
+        return PostProcessorDetail(
+            text: content.trimmingCharacters(in: .whitespacesAndNewlines),
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            rawResponse: rawResponse
+        )
     }
 }
