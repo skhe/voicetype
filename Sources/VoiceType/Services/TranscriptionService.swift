@@ -7,7 +7,13 @@ actor TranscriptionService {
 
     func transcribe(audioURL: URL, model: String, language: String) async throws -> String {
         let whisper = try await loadModel(model)
-        let options = DecodingOptions(language: language)
+        let options = DecodingOptions(
+            language: language,
+            noSpeechThreshold: 0.3,
+            logProbThreshold: -1.5,
+            firstTokenLogProbThreshold: -2.5,
+            compressionRatioThreshold: 3.0
+        )
         let results = try await whisper.transcribe(audioPath: audioURL.path, decodeOptions: options)
         return results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
     }

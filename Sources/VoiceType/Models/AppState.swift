@@ -178,6 +178,16 @@ class AppState: ObservableObject {
             let transcribeDuration = Date().timeIntervalSince(t0)
             print("[VoiceType] transcribing done (\(String(format: "%.1f", transcribeDuration))s)")
 
+            guard !rawText.isEmpty else {
+                print("[VoiceType] transcription returned empty result")
+                status = .error("未识别到语音内容")
+                scheduleReset()
+                if !debugLogging {
+                    try? FileManager.default.removeItem(at: audioURL)
+                }
+                return
+            }
+
             let finalText: String
             var postDetail: PostProcessorDetail?
             var postDuration: Double?
